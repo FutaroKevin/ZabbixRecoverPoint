@@ -1,0 +1,226 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 02e4df4f20b848e79267641790f241da
+      name: Templates/Virtualization
+  templates:
+    - uuid: 6b06a751e8764046bfcd800cb0f2ac59
+      template: K_DellRecoverPoint_4_VM
+      name: K_DellRecoverPoint_4_VM
+      groups:
+        - name: Templates/Virtualization
+      items:
+        - uuid: c704b714eaf34516a7a433acc7729296
+          name: 'Get RecoverPoint Alerts'
+          type: HTTP_AGENT
+          key: alerts.get
+          delay: 15m
+          value_type: TEXT
+          trends: '0'
+          url: '{$SCHEMA}{$API_USER}:{$API_PWD}@{HOST.CONN}{$API_PATH}/alerts'
+        - uuid: 2e3699f25b3946b18012989df5add5df
+          name: 'Get RecoverPoint Groups'
+          type: HTTP_AGENT
+          key: group.get
+          delay: 15m
+          value_type: TEXT
+          trends: '0'
+          url: '{$SCHEMA}{$API_USER}:{$API_PWD}@{HOST.CONN}{$API_PATH}/groups'
+      discovery_rules:
+        - uuid: f7a7a48e822649a4b0c7b05ab37ef446
+          name: 'Alert Discovery'
+          type: HTTP_AGENT
+          key: disco.r4vm.cluster
+          delay: 1h
+          item_prototypes:
+            - uuid: 21f4a06b16854809b70adef3abf3dd73
+              name: '{#RPCLUSTERNAME} {#CATEGORY} alert'
+              type: DEPENDENT
+              key: 'rp.alert.[{#ID}]'
+              delay: '0'
+              value_type: TEXT
+              trends: '0'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.[?(@.id== "{#ID}")].severity'
+                - type: RTRIM
+                  parameters:
+                    - '"]'
+                - type: LTRIM
+                  parameters:
+                    - '["'
+              master_item:
+                key: alerts.get
+              trigger_prototypes:
+                - uuid: dc8db440a71d4f1782b0a2a479794036
+                  expression: 'last(/K_DellRecoverPoint_4_VM/rp.alert.[{#ID}],#3)="ERROR"'
+                  name: '{#RPCLUSTERNAME} {#CATEGORY} is in error state'
+                  priority: HIGH
+                - uuid: 2296ee3627054e2dadfd8233b5be7896
+                  expression: 'last(/K_DellRecoverPoint_4_VM/rp.alert.[{#ID}],#3)="WARNING"'
+                  name: '{#RPCLUSTERNAME} {#CATEGORY} is in warning state'
+                  priority: AVERAGE
+          url: '{$SCHEMA}{$API_USER}:{$API_PWD}@{HOST.CONN}{$API_PATH}/alerts'
+          lld_macro_paths:
+            - lld_macro: '{#CATEGORY}'
+              path: $.category
+            - lld_macro: '{#ID}'
+              path: $.id
+            - lld_macro: '{#RPCLUSTERID}'
+              path: $.rpClusterId
+            - lld_macro: '{#RPCLUSTERNAME}'
+              path: $.rpClusterName
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$[*]'
+        - uuid: fae638aa64694bf990cddbf5f83a4acb
+          name: 'Group Discovery'
+          type: HTTP_AGENT
+          key: disco.r4vm.group
+          delay: 1h
+          filter:
+            conditions:
+              - macro: '{#ENABLED}'
+                value: 'true'
+                formulaid: A
+          item_prototypes:
+            - uuid: 9aed12585a4e4d128eb96feb1b9b5cbd
+              name: 'ID of  {#NAME}'
+              type: DEPENDENT
+              key: 'r4vm.group.id[{#NAME}]'
+              delay: '0'
+              trends: '0'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.[?(@.name == "{#NAME}")].id'
+                - type: RTRIM
+                  parameters:
+                    - '"]'
+                - type: LTRIM
+                  parameters:
+                    - '["'
+              master_item:
+                key: group.get
+            - uuid: 3ea5d669aa4048e6b8a98846160859d5
+              name: 'Protected MB of  {#NAME}'
+              type: DEPENDENT
+              key: 'r4vm.group.protectionSizeInMB[{#NAME}]'
+              delay: '0'
+              trends: '0'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.[?(@.name == "{#NAME}")].protectionSizeInMB'
+                - type: LTRIM
+                  parameters:
+                    - '["'
+                - type: RTRIM
+                  parameters:
+                    - '"]'
+              master_item:
+                key: group.get
+            - uuid: 1460bc4766dd406bac79e7b6f11a7a4a
+              name: 'Transfer Status of {#NAME}'
+              type: DEPENDENT
+              key: 'r4vm.group.transferstatus[{#NAME}]'
+              delay: '0'
+              value_type: CHAR
+              trends: '0'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.[?(@.name == "{#NAME}")].transferStatus'
+                - type: LTRIM
+                  parameters:
+                    - '["'
+                - type: RTRIM
+                  parameters:
+                    - '"]'
+              master_item:
+                key: group.get
+              trigger_prototypes:
+                - uuid: f036a445189948479cd51422fa172aab
+                  expression: 'last(/K_DellRecoverPoint_4_VM/r4vm.group.transferstatus[{#NAME}],#3)="DISABLED"'
+                  name: 'Group {#NAME} is disabled'
+                  url_name: Recoverpoint
+                  url: 'LINK_TO_VC_RP'
+                  priority: HIGH
+                  description: 'Verificare all''interno di recoverpoint, come mai il gruppo di replica è stato disattivato'
+                - uuid: d04d5c91c71c432ba18e491ddbbd1dea
+                  expression: 'last(/K_DellRecoverPoint_4_VM/r4vm.group.transferstatus[{#NAME}],#3)="ERROR"'
+                  name: 'Group {#NAME} is in error'
+                  url_name: Recoverpoint
+                  url: 'LINK_TO_VC_RP'
+                  priority: HIGH
+                  description: 'Gruppo di replica in errore, verificare all''interno di recoverpoint'
+                - uuid: a9929a265fbc42cbbc52235d2d5b3f62
+                  expression: 'last(/K_DellRecoverPoint_4_VM/r4vm.group.transferstatus[{#NAME}],#3)="HIGH_LOAD"'
+                  name: 'Group {#NAME} is in High Load Transfer'
+                  priority: WARNING
+                  description: 'Verificare lo stato delle macchine replicate all''interno del gruppo di replica'
+                - uuid: 892885da675c4f12bc2ec5165f52e3ae
+                  expression: 'last(/K_DellRecoverPoint_4_VM/r4vm.group.transferstatus[{#NAME}],#3)="WARNING"'
+                  name: 'Group {#NAME} is in warning state'
+                  priority: WARNING
+                - uuid: f515d02997bc430792af210de5564bfa
+                  expression: 'last(/K_DellRecoverPoint_4_VM/r4vm.group.transferstatus[{#NAME}],#3)="PAUSED_BY_SYSTEM"'
+                  name: 'Group {#NAME} is paused by system'
+                  url_name: Recoverpoint
+                  url: 'LINK_TO_VC_RP'
+                  priority: AVERAGE
+                  description: 'Verificare la connettività tra i gruppi di replica all''interno di recoverpoint, se un gruppo viene messo in pausa da sistema probabilmente ci sono problemi di connettività'
+            - uuid: 87fd6ac518884ef888b3b47e94f59629
+              name: 'Group Name {#NAME}'
+              type: DEPENDENT
+              key: 'r4vm.group[{#NAME}]'
+              delay: '0'
+              value_type: CHAR
+              trends: '0'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.[?(@.name == "{#NAME}")].name'
+                - type: LTRIM
+                  parameters:
+                    - '["'
+                - type: RTRIM
+                  parameters:
+                    - '"]'
+              master_item:
+                key: group.get
+          url: '{$SCHEMA}{$API_USER}:{$API_PWD}@{HOST.CONN}{$API_PATH}/groups'
+          lld_macro_paths:
+            - lld_macro: '{#ENABLED}'
+              path: $.enabled
+            - lld_macro: '{#ID}'
+              path: $.id
+            - lld_macro: '{#NAME}'
+              path: $.name
+            - lld_macro: '{#PRODRPCLUSTERNAME}'
+              path: $.prodRpClusterName
+            - lld_macro: '{#PRODVCNAME}'
+              path: $.prodVcName
+            - lld_macro: '{#PROTECTIONSIZEINMB}'
+              path: $.protectionSizeInMB
+            - lld_macro: '{#STATUS}'
+              path: $.status
+            - lld_macro: '{#TRANSFERENABLED}'
+              path: $.transferEnabled
+            - lld_macro: '{#TRANSFERSTATUS}'
+              path: $.transferStatus
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$[*]'
+      macros:
+        - macro: '{$API_PATH}'
+          value: /api/v1
+        - macro: '{$API_PWD}'
+          value: _change_password_
+        - macro: '{$API_USER}'
+          value: administrator%40vsphere.local
+        - macro: '{$SCHEMA}'
+          value: 'https://'
